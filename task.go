@@ -1,7 +1,6 @@
 package task
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/go-task/task/execext"
 
+	"github.com/go-task/task/producer"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -62,10 +62,15 @@ func (e *Executor) Run(args ...string) error {
 	}
 
 	if e.Watch {
+		currentProducer = producer.ExecProducer{}
 		if err := e.watchTasks(args...); err != nil {
 			return err
 		}
 		return nil
+	}
+
+	if err := currentProducer.StartRun(); err != nil {
+		return err
 	}
 
 	for _, a := range args {
@@ -73,11 +78,17 @@ func (e *Executor) Run(args ...string) error {
 			return err
 		}
 	}
+
+	if err := currentProducer.FinishRun(); err != nil {
+		return err
+	}
 	return nil
 }
 
 // RunTask runs a task by its name
 func (e *Executor) RunTask(ctx context.Context, name string) error {
+	currentProducer.RunTask(name)
+
 	t, ok := e.Tasks[name]
 	if !ok {
 		return &taskNotFoundError{name}
@@ -226,7 +237,7 @@ func (e *Executor) runCommand(ctx context.Context, task string, i int) error {
 	if err != nil {
 		return err
 	}
-	opts := &execext.RunCommandOptions{
+	opts := execext.RunCommandOptions{
 		Context: ctx,
 		Command: c,
 		Dir:     dir,
@@ -235,20 +246,8 @@ func (e *Executor) runCommand(ctx context.Context, task string, i int) error {
 		Stderr:  os.Stderr,
 	}
 
-	if t.Set == "" {
-		log.Println(c)
-		opts.Stdout = os.Stdout
-		if err = execext.RunCommand(opts); err != nil {
-			return err
-		}
-	} else {
-		buff := bytes.NewBuffer(nil)
-		opts.Stdout = buff
-		if err = execext.RunCommand(opts); err != nil {
-			return err
-		}
-		os.Setenv(t.Set, strings.TrimSpace(buff.String()))
-	}
+	currentProducer.RunCommand(ctx, t.Set, opts)
+
 	return nil
 }
 
@@ -256,6 +255,7 @@ func (e *Executor) getTaskDir(name string) (string, error) {
 	t := e.Tasks[name]
 
 	exeDir, err := e.ReplaceVariables(name, e.Dir)
+
 	if err != nil {
 		return "", err
 	}
