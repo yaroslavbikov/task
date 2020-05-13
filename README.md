@@ -1,3 +1,7 @@
+### Install to ./bin
+GOBIN=$PWD/bin task install
+
+
 ![Test](https://github.com/go-task/task/workflows/Test/badge.svg)
 ![GoReleaser](https://github.com/go-task/task/workflows/goreleaser/badge.svg)
 
